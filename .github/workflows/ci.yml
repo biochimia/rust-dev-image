@@ -1,0 +1,51 @@
+---
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Lint
+        run: make lint
+
+  build:
+    # The Containerfile branches on architecture; build both so neither rots.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    needs: lint
+    runs-on: ${{ matrix.runner }}
+    name: build (${{ matrix.arch }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # `make check` as a developer runs it, minus the lint the job above did.
+      - name: Build and check
+        run: make -o lint check
+
+      - name: Show image provenance
+        run: make info
+
+  vendor-drift:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare vendored artifacts against upstream
+        run: make vendor-check-drift && git diff --stat --patch --exit-code

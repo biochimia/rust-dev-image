@@ -1,0 +1,4 @@
+# Binary blobs cached locally, not persisted
+/image/vendor/*.bin
+/image/vendor/*.tgz
+/image/vendor/share/*.wasm

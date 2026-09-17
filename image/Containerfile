@@ -1,0 +1,120 @@
+# Unpinned base image; rebuilds pick up security fixes from upstream.
+FROM ubuntu:resolute
+
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+
+# noninteractive to avoid tzdata's interactive time zone setup, and default to UTC.
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    bc \
+    build-essential \
+    ca-certificates \
+    curl \
+    git \
+    rustup \
+    shellcheck \
+    time \
+    yamllint \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY vendor/nodesource.asc /etc/apt/keyrings/nodesource.asc
+COPY vendor/nodesource.sources /etc/apt/sources.list.d/nodesource.sources
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends nodejs \
+  && rm -rf /var/lib/apt/lists/*
+
+# Mount point for caches that should outlive a container: build artifacts, the
+# crate registry, checkouts of git dependencies, and rustup toolchains.
+ENV CARGO_TARGET_BASE=/var/cache/rust-dev/target
+RUN mkdir -p /var/cache/rust-dev/target/default \
+             /var/cache/rust-dev/registry \
+             /var/cache/rust-dev/git \
+             /var/cache/rust-dev/toolchains \
+             /var/cache/rust-dev/rustup-tmp \
+             /opt/rust/toolchains \
+  && chown -R ubuntu:ubuntu /var/cache/rust-dev /opt/rust/toolchains
+
+USER ubuntu
+
+ENV HOME=/home/ubuntu
+ENV PATH=$HOME/.local/bin:$HOME/.cargo/bin:$PATH
+
+# mikefarah/yq -- YAML processor / validator
+RUN --mount=type=bind,source=vendor,target=/setup/vendor \
+  mkdir -p "$HOME/.local/bin" "$HOME/.config/dprint" "$HOME/.config/yamllint"; \
+  src="/setup/vendor/yq-linux-$(uname -m).bin"; \
+  [ -f "$src" ] || { echo "missing yq executable for $(uname -m)" >&2; exit 1; }; \
+  install -m 0755 "$src" "$HOME/.local/bin/yq"
+
+ARG RUST_FMT_TOOLCHAIN
+RUN rustup toolchain install stable --profile minimal --component clippy llvm-tools-preview rust-analyzer; \
+  rustup toolchain install "${RUST_FMT_TOOLCHAIN:?}" --profile minimal --component rustfmt; \
+  rustup default stable; \
+  for tc in "$HOME"/.rustup/toolchains/*; do \
+    name="$(basename "$tc")"; \
+    mv "$tc" "/opt/rust/toolchains/$name"; \
+    ln -s "/opt/rust/toolchains/$name" "/var/cache/rust-dev/toolchains/$name"; \
+  done; \
+  rmdir "$HOME/.rustup/toolchains" "$HOME/.rustup/tmp"; \
+  ln -s /var/cache/rust-dev/toolchains "$HOME/.rustup/toolchains"; \
+  ln -s /var/cache/rust-dev/rustup-tmp "$HOME/.rustup/tmp"
+
+# For use with `cargo +$RUST_FMT_TOOLCHAIN fmt`; `cargo fmt` uses the default
+# toolchain, stable.
+ENV RUST_FMT_TOOLCHAIN=${RUST_FMT_TOOLCHAIN}
+
+RUN --mount=type=bind,source=vendor,target=/setup/vendor \
+  mkdir -p "$HOME/.cargo/bin"; \
+  src="/setup/vendor/cargo-binstall-linux-$(uname -m).tgz"; \
+  [ -f "$src" ] || { echo "no vendored cargo-binstall for $(uname -m)" >&2; exit 1; }; \
+  tar -xz -C "$HOME/.cargo/bin" -f "$src" cargo-binstall
+
+ARG CARGO_BLOAT_VERSION
+ARG CARGO_DENY_VERSION
+ARG CARGO_LLVM_LINES_VERSION
+ARG CARGO_MACHETE_VERSION
+ARG CARGO_NEXTEST_VERSION
+ARG DPRINT_VERSION
+ARG RUSTFILT_VERSION
+RUN cargo binstall --no-confirm \
+      "cargo-bloat@${CARGO_BLOAT_VERSION:?}" \
+      "cargo-deny@${CARGO_DENY_VERSION:?}" \
+      "cargo-llvm-lines@${CARGO_LLVM_LINES_VERSION:?}" \
+      "cargo-machete@${CARGO_MACHETE_VERSION:?}" \
+      "cargo-nextest@${CARGO_NEXTEST_VERSION:?}" \
+      "dprint@${DPRINT_VERSION:?}" \
+      "rustfilt@${RUSTFILT_VERSION:?}" \
+  && rm -rf "$HOME/.cargo/registry" "$HOME/.cargo/git"
+
+# Set up cache roots
+RUN mkdir -p "$HOME/.cargo" \
+  && ln -s /var/cache/rust-dev/registry "$HOME/.cargo/registry" \
+  && ln -s /var/cache/rust-dev/git "$HOME/.cargo/git" \
+  && printf '[build]\ntarget-dir = "%s/default"\n' "$CARGO_TARGET_BASE" \
+     > "$HOME/.cargo/config.toml"
+
+# Fast-churning CLI tooling -- resolved to latest at build time, unpinned.
+ARG CLAUDE_VERSION=latest
+RUN --mount=type=bind,source=vendor,target=/setup/vendor \
+  /setup/vendor/claude-install-script "${CLAUDE_VERSION:?}" \
+  && claude plugin marketplace add anthropics/claude-plugins-official \
+  && claude plugin install rust-analyzer-lsp@claude-plugins-official
+
+COPY --chown=ubuntu:ubuntu rust-dev /home/ubuntu/.local/bin/rust-dev
+COPY rust-dev-entrypoint /usr/local/bin/rust-dev-entrypoint
+COPY vendor/share/ /usr/local/share/rust-dev/
+COPY --chown=ubuntu:ubuntu config/dprint.jsonc /home/ubuntu/.config/dprint/dprint.jsonc
+COPY --chown=ubuntu:ubuntu config/yamllint.yaml /home/ubuntu/.config/yamllint/config
+
+ENTRYPOINT ["/usr/local/bin/rust-dev-entrypoint"]
+CMD ["/bin/bash"]
+
+ARG BUILD_DATE=unknown
+ARG GIT_REVISION=unknown
+LABEL org.opencontainers.image.title="rust-dev-image" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.description="Rust development image with Claude Code preinstalled" \
+      org.opencontainers.image.source="https://github.com/biochimia/rust-dev-image" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.revision="${GIT_REVISION}" \
+      io.github.biochimia.rust-dev-image.claude-code-version="${CLAUDE_VERSION}"

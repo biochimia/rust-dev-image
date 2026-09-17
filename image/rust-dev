@@ -1,0 +1,100 @@
+#!/usr/bin/make -f
+##@ Common targets for projects built inside rust-dev-image.
+
+PROJECT_ROOT ?= $(or $(shell git rev-parse --show-toplevel 2>/dev/null),$(CURDIR))
+
+ifndef RUST_CACHE_KEY
+RUST_CACHE_KEY := $(shell cargo metadata --no-deps --format-version 1 2>/dev/null \
+  | yq -p json -r '[.packages[].name] | sort | .[0] // ""' 2>/dev/null)
+endif
+
+ifdef CARGO_TARGET_BASE
+# Never the base itself: `cargo clean` removes CARGO_TARGET_DIR wholesale,
+# taking every workspace on the volume. `?=` is enough because the image's
+# default sits in cargo's config, below the environment.
+CARGO_TARGET_DIR ?= $(CARGO_TARGET_BASE)/$(or $(RUST_CACHE_KEY),default)
+export CARGO_TARGET_DIR
+endif
+
+# Degrades to the default rustfmt when the pin is unset.
+RUSTFMT ?= cargo $(if $(RUST_FMT_TOOLCHAIN),+$(RUST_FMT_TOOLCHAIN)) fmt --all
+CLIPPY  ?= cargo clippy --all-targets --all-features -- -D warnings
+NEXTEST ?= cargo nextest run
+DENY    ?= cargo deny check
+MACHETE ?= cargo machete $(PROJECT_ROOT)
+
+# Only the pinned toolchain is checked, and not when RUSTFMT is overridden.
+RUSTUP_TOOLCHAINS := $(or $(RUSTUP_HOME),$(HOME)/.rustup)/toolchains
+IMAGE_TOOLCHAINS  := /opt/rust/toolchains
+ifeq ($(origin RUSTFMT)$(if $(RUST_FMT_TOOLCHAIN),set),fileset)
+CHECK_RUSTFMT_TOOLCHAIN = ls -d '$(RUSTUP_TOOLCHAINS)/$(RUST_FMT_TOOLCHAIN)'-*/ >/dev/null 2>&1 || { \
+  echo "rust-dev: rustfmt toolchain $(RUST_FMT_TOOLCHAIN) is not installed" >&2; \
+  if ls -d '$(IMAGE_TOOLCHAINS)/$(RUST_FMT_TOOLCHAIN)'-*/ >/dev/null 2>&1; \
+  then echo "  the image has it: run rust-dev-entrypoint to link it" >&2; \
+  else echo "  install it: rustup toolchain install $(RUST_FMT_TOOLCHAIN) --component rustfmt" >&2; fi; \
+  false; }
+else
+CHECK_RUSTFMT_TOOLCHAIN = true
+endif
+
+# The image ships a global dprint config with the markdown, toml and yaml
+# plugins. A dprint.json in the project takes precedence over it.
+DPRINT       ?= dprint
+DPRINT_PATHS ?= .
+
+SHELLCHECK ?= shellcheck
+YAMLLINT   ?= yamllint
+
+# Tracked files only, so build output and vendored trees stay out of it.
+# Recursively expanded: git runs when linting, not on every invocation.
+SHELL_SOURCES ?= $(shell git -C '$(PROJECT_ROOT)' ls-files --full-name -- '*.sh' '*.bash' 2>/dev/null)
+YAML_SOURCES  ?= $(shell git -C '$(PROJECT_ROOT)' ls-files --full-name -- '*.yml' '*.yaml' 2>/dev/null)
+
+.PHONY: help fmt fmt-check lint test audit check info
+
+##@ Help
+
+help: ## List available targets
+	@awk 'BEGIN { FS = ":.*?## " } /^##@ / { printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next } /^[a-zA-Z0-9_.-]+:.*?## / { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+##@ Main
+
+fmt: ## Format sources
+	@$(CHECK_RUSTFMT_TOOLCHAIN)
+	@$(RUSTFMT)
+	@cd '$(PROJECT_ROOT)' && $(DPRINT) fmt $(DPRINT_PATHS)
+
+check: fmt-check lint test ## Run all checks (excludes audit)
+
+test: ## Run tests
+	@$(NEXTEST)
+
+info: ## Print information about this image
+	@printf 'cache key:        %s\n' '$(or $(RUST_CACHE_KEY),default)'
+	@printf 'CARGO_TARGET_DIR: %s\n' '$(or $(CARGO_TARGET_DIR),(not set))'
+	@printf 'project root:     %s\n' '$(PROJECT_ROOT)'
+	@printf 'rustfmt:          %s\n' '$(RUSTFMT)'
+	@if $(CHECK_RUSTFMT_TOOLCHAIN); then \
+	  $(RUSTFMT) --version 2>&1 | sed 's/^/rustfmt version:  /'; \
+	fi
+
+##@ More
+
+# Not part of check: cargo-deny needs a deny.toml, so it is opt-in.
+audit: ## Audit dependencies
+	@$(DENY)
+	@$(MACHETE)
+
+fmt-check: ## Check formatting
+	@$(CHECK_RUSTFMT_TOOLCHAIN)
+	@$(RUSTFMT) -- --check
+	@cd '$(PROJECT_ROOT)' && $(DPRINT) check $(DPRINT_PATHS)
+
+lint: ## Run linters
+	@$(CLIPPY)
+	@files='$(SHELL_SOURCES)'; \
+	  if [ -n "$$files" ]; then cd '$(PROJECT_ROOT)' && $(SHELLCHECK) $$files; \
+	  else echo "no shell sources to lint"; fi
+	@files='$(YAML_SOURCES)'; \
+	  if [ -n "$$files" ]; then cd '$(PROJECT_ROOT)' && $(YAMLLINT) $$files; \
+	  else echo "no YAML sources to lint"; fi

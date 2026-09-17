@@ -1,0 +1,8 @@
+{
+  "includes": ["**/*.toml", "**/*.md", "**/*.{yaml,yml}"],
+  "plugins": [
+    "/usr/local/share/rust-dev/dprint-markdown.wasm",
+    "/usr/local/share/rust-dev/dprint-toml.wasm",
+    "/usr/local/share/rust-dev/dprint-yaml.wasm",
+  ],
+}

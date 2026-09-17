@@ -1,0 +1,15 @@
+---
+ignored:
+  # Disabled: Pin versions in apt-get install.
+  #
+  # The image does NOT pin apt package versions, and instead relies on a
+  # specific Ubuntu LTS release and image to provide any available security
+  # updates.
+  - DL3008
+
+  # Disabled: Non-numeric user-id may not be resolvable by host system.
+  #
+  # Ubuntu images provide the `ubuntu` user with uid 1000. We rely on the user
+  # name for `chown` commands, as well as for the user's home path. Using the
+  # name directly keeps references consistent.
+  - DL3066

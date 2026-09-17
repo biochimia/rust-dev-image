@@ -1,0 +1,14 @@
+extends: default
+
+rules:
+  document-start: disable
+  comments-indentation: disable
+  comments:
+    # dprint puts a single space before inline comments; relax default (2) to
+    # match.
+    min-spaces-from-content: 1
+  truthy:
+    check-keys: false
+  line-length:
+    max: 120
+    level: warning

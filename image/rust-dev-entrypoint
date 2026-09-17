@@ -1,0 +1,24 @@
+#!/bin/bash
+#
+# Prepares the cache volume, then runs the given command; without one, only
+# prepares it. A named volume is filled from the image on first mount only, so
+# an older volume lacks a newer image's toolchains, and a bind mount starts
+# empty.
+
+cache=/var/cache/rust-dev
+failed=
+
+if mkdir -p "$cache"/{target/default,registry,git,toolchains,rustup-tmp} 2>/dev/null; then
+  for tc in /opt/rust/toolchains/*; do
+    link="$cache/toolchains/${tc##*/}"
+    [ -e "$link" ] || [ -L "$link" ] || ln -s "$tc" "$link" || failed=1
+  done
+else
+  failed=1
+fi
+
+if [ -n "$failed" ]; then
+  echo "rust-dev-entrypoint: could not set up $cache; is it writable by $(id -un)?" >&2
+fi
+
+[ "$#" -eq 0 ] || exec "$@"
