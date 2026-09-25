@@ -106,6 +106,10 @@ COPY vendor/share/ /usr/local/share/rust-dev/
 COPY --chown=ubuntu:ubuntu config/dprint.jsonc /home/ubuntu/.config/dprint/dprint.jsonc
 COPY --chown=ubuntu:ubuntu config/yamllint.yaml /home/ubuntu/.config/yamllint/config
 
+# Loaded by every Claude Code session as managed memory, so an agent learns the
+# image's conventions. Outside $HOME, so a mounted ~/.claude cannot shadow it.
+COPY config/claude-code.md /etc/claude-code/CLAUDE.md
+
 ENTRYPOINT ["/usr/local/bin/rust-dev-entrypoint"]
 CMD ["/bin/bash"]
 

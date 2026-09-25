@@ -101,6 +101,14 @@ sorts first would move it, so a workspace is better named explicitly:
 rust-dev check RUST_CACHE_KEY=my-monorepo
 ```
 
+### For agents
+
+Claude Code in the image loads
+[`image/config/claude-code.md`](image/config/claude-code.md) as managed memory
+from `/etc/claude-code/CLAUDE.md`. It tells the agent about `rust-dev`, where
+build output goes, the rustfmt toolchain and the other tools. The file lives
+outside `$HOME`, so it still loads when you mount your own `~/.claude`.
+
 ## Versions
 
 [`versions.mk`](versions.mk) pins cargo tool versions, and the nightly

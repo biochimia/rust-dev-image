@@ -177,6 +177,15 @@ echo "== project integration =="
 # Proves it is on PATH, executable, and that the makefile parses.
 require "rust-dev" rust-dev info
 
+# Without it, an agent in the container has no way to learn about rust-dev.
+if [ -r /etc/claude-code/CLAUDE.md ] && grep -q 'rust-dev' /etc/claude-code/CLAUDE.md; then
+  printf '  ok    %-22s %s\n' "agent memory" /etc/claude-code/CLAUDE.md
+  pass=$((pass + 1))
+else
+  printf '  FAIL  %-22s /etc/claude-code/CLAUDE.md missing or unreadable\n' "agent memory"
+  fail=$((fail + 1))
+fi
+
 # dprint's YAML output must satisfy the image's yamllint config.
 yaml_dir=$(mktemp -d)
 printf -- '---\na: 1  # comment\n' >"$yaml_dir/t.yaml"
