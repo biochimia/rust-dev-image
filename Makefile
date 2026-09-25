@@ -33,6 +33,7 @@ check: image ## Build the image, then smoke test it
 	@$(CONTAINER_ENGINE) run --rm \
 	  -v /var/cache/rust-dev \
 	  -e RUST_FMT_TOOLCHAIN="$(RUST_FMT_TOOLCHAIN)" \
+	  -e MIRI_TOOLCHAIN="$(MIRI_TOOLCHAIN)" \
 	  -v "$(CURDIR)/scripts/smoke-test.sh:/smoke-test.sh:ro" \
 	  $(IMAGE):$(GIT_REVISION) /smoke-test.sh
 
@@ -52,6 +53,7 @@ image: lint ## Build the image
 	    --build-arg CLAUDE_VERSION="$$claude" \
 	    --build-arg DPRINT_VERSION="$(DPRINT_VERSION)" \
 	    --build-arg GIT_REVISION="$(GIT_REVISION)" \
+	    --build-arg MIRI_TOOLCHAIN="$(MIRI_TOOLCHAIN)" \
 	    --build-arg RUSTFILT_VERSION="$(RUSTFILT_VERSION)" \
 	    --build-arg RUST_FMT_TOOLCHAIN="$(RUST_FMT_TOOLCHAIN)" \
 	    -t $(IMAGE):$(GIT_REVISION) \

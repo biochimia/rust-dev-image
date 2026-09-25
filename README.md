@@ -5,7 +5,8 @@ A container image for Rust development with [Claude Code][cc] preinstalled.
 The image carries the stable toolchain with `clippy` and `rust-analyzer`, plus
 a pinned nightly for `rustfmt`. The cargo tooling covers tests (`nextest`),
 dependency and license audits (`deny`, `machete`), binary size and codegen
-(`bloat`, `llvm-lines`) and coverage (`llvm-tools`, `rustfilt`), with `dprint`
+(`bloat`, `llvm-lines`), coverage (`llvm-tools`, `rustfilt`) and undefined
+behavior (`miri`), with `dprint`
 as a configurable formatter for other file types. Also `node`, `git`, `yq`,
 `shellcheck` and `yamllint`.
 
@@ -82,8 +83,9 @@ the image will likely need a first `rust-dev fmt`.
 | `lint`              | `cargo clippy`, then `shellcheck` and `yamllint` over the tracked shell and YAML files |
 | `test`              | `cargo nextest run`                                                                    |
 | `audit`             | `cargo deny check` and `cargo machete` (requires a `deny.toml`)                        |
+| `miri`              | `cargo miri test` on the pinned Miri toolchain                                         |
 | `check`             | `fmt-check`, `lint`, `test`                                                            |
-| `info`              | Resolved cache key, target directory and rustfmt version                               |
+| `info`              | Resolved cache key, target directory, and rustfmt and Miri commands                    |
 
 Every command is a variable you can override, so a project keeps its own flags
 without giving up the rest:
@@ -112,7 +114,7 @@ outside `$HOME`, so it still loads when you mount your own `~/.claude`.
 ## Versions
 
 [`versions.mk`](versions.mk) pins cargo tool versions, and the nightly
-toolchain used for `rustfmt`.
+toolchains used for `rustfmt` and Miri.
 
 Everything else resolves at build time, so the image tracks it: the
 `ubuntu:resolute` base, apt packages, Rust `stable`, Node.js 24.x and Claude
@@ -123,6 +125,11 @@ The nightly `rustfmt` pin is here because this image targets nightly-only
 rustfmt options. When not relying on unstable options, `make image
 RUST_FMT_TOOLCHAIN=stable` builds an image without the second toolchain.
 Plain `cargo fmt` uses stable.
+
+Miri needs nightly, so it has a pin of its own, `MIRI_TOOLCHAIN`. It matches
+the rustfmt pin, so the image carries a single nightly; keep them in step when
+bumping. The sysroot Miri runs against is built into the image, so `rust-dev
+miri` works offline. `make image MIRI_TOOLCHAIN=` builds an image without Miri.
 
 ## Supply chain
 

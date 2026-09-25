@@ -7,3 +7,5 @@ CARGO_NEXTEST_VERSION    ?= 0.9.146
 DPRINT_VERSION           ?= 0.57.4
 RUSTFILT_VERSION         ?= 0.2.1
 RUST_FMT_TOOLCHAIN       ?= nightly-2026-09-17
+# Not every nightly ships Miri: check it is available before bumping.
+MIRI_TOOLCHAIN           ?= nightly-2026-09-17

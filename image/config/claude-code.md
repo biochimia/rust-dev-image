@@ -14,6 +14,8 @@ project with no setup there. Prefer it over hand-assembled `cargo` invocations:
   done
 - `rust-dev fmt`: `cargo fmt` on the pinned rustfmt toolchain, then `dprint`
   for markdown, TOML and YAML
+- `rust-dev miri`: tests under Miri, for undefined behavior in `unsafe` code;
+  slow, so run it when touching `unsafe`, not on every change
 - `rust-dev info`: cache key, `CARGO_TARGET_DIR` and rustfmt version
 
 Every command is a make variable that can be overridden per invocation, e.g.
@@ -37,6 +39,8 @@ a cache volume; `rust-dev info` prints the exact path. Bare `cargo` uses
 - `rustfmt` comes from a pinned toolchain, `$RUST_FMT_TOOLCHAIN`: use
   `cargo +$RUST_FMT_TOOLCHAIN fmt`, or `rust-dev fmt`. Plain `cargo fmt` uses
   stable and may disagree with the project's configured options.
+- Miri comes from a pinned nightly, `$MIRI_TOOLCHAIN`: use
+  `cargo +$MIRI_TOOLCHAIN miri test`, or `rust-dev miri`.
 
 ## Other tools
 

@@ -69,6 +69,10 @@ require "rust-analyzer" rust-analyzer --version
 llvm_bin="$(rustc --print target-libdir 2>/dev/null)/../bin"
 require "llvm-profdata" "$llvm_bin/llvm-profdata" --version
 require "llvm-cov"      "$llvm_bin/llvm-cov" --version
+# Optional: an image built with an empty MIRI_TOOLCHAIN has none.
+if [ -n "${MIRI_TOOLCHAIN:-}" ]; then
+  require "miri"        cargo "+$MIRI_TOOLCHAIN" miri --version
+fi
 
 echo
 echo "== cargo tooling =="
@@ -213,6 +217,17 @@ if cargo new --quiet --lib "$work/smoke" >/dev/null 2>&1 \
 else
   printf '  FAIL  %-22s cargo new + build + nextest run\n' "compile+test"
   fail=$((fail + 1))
+fi
+
+# Offline, so it fails if the image did not come with a prebuilt Miri sysroot.
+if [ -n "${MIRI_TOOLCHAIN:-}" ]; then
+  if (cd "$work/smoke" && cargo "+$MIRI_TOOLCHAIN" miri test --offline >/dev/null 2>&1); then
+    printf '  ok    %-22s cargo miri test, offline\n' "miri test"
+    pass=$((pass + 1))
+  else
+    printf '  FAIL  %-22s cargo miri test, offline\n' "miri test"
+    fail=$((fail + 1))
+  fi
 fi
 
 # Bare cargo must land in a subdirectory of the base via the image's cargo

@@ -22,19 +22,34 @@ CLIPPY  ?= cargo clippy --all-targets --all-features -- -D warnings
 NEXTEST ?= cargo nextest run
 DENY    ?= cargo deny check
 MACHETE ?= cargo machete $(PROJECT_ROOT)
+MIRI    ?= cargo $(if $(MIRI_TOOLCHAIN),+$(MIRI_TOOLCHAIN)) miri test
 
-# Only the pinned toolchain is checked, and not when RUSTFMT is overridden.
+# Only pinned toolchains are checked, and not when the command using them is
+# overridden.
 RUSTUP_TOOLCHAINS := $(or $(RUSTUP_HOME),$(HOME)/.rustup)/toolchains
 IMAGE_TOOLCHAINS  := /opt/rust/toolchains
-ifeq ($(origin RUSTFMT)$(if $(RUST_FMT_TOOLCHAIN),set),fileset)
-CHECK_RUSTFMT_TOOLCHAIN = ls -d '$(RUSTUP_TOOLCHAINS)/$(RUST_FMT_TOOLCHAIN)'-*/ >/dev/null 2>&1 || { \
-  echo "rust-dev: rustfmt toolchain $(RUST_FMT_TOOLCHAIN) is not installed" >&2; \
-  if ls -d '$(IMAGE_TOOLCHAINS)/$(RUST_FMT_TOOLCHAIN)'-*/ >/dev/null 2>&1; \
+
+# $(call check-toolchain,<tool>,<toolchain>,<components>)
+check-toolchain = ls -d '$(RUSTUP_TOOLCHAINS)/$(2)'-*/ >/dev/null 2>&1 || { \
+  echo "rust-dev: $(1) toolchain $(2) is not installed" >&2; \
+  if ls -d '$(IMAGE_TOOLCHAINS)/$(2)'-*/ >/dev/null 2>&1; \
   then echo "  the image has it: run rust-dev-entrypoint to link it" >&2; \
-  else echo "  install it: rustup toolchain install $(RUST_FMT_TOOLCHAIN) --component rustfmt" >&2; fi; \
+  else echo "  install it: rustup toolchain install $(2) --component $(3)" >&2; fi; \
   false; }
+
+ifeq ($(origin RUSTFMT)$(if $(RUST_FMT_TOOLCHAIN),set),fileset)
+CHECK_RUSTFMT_TOOLCHAIN = $(call check-toolchain,rustfmt,$(RUST_FMT_TOOLCHAIN),rustfmt)
 else
 CHECK_RUSTFMT_TOOLCHAIN = true
+endif
+
+# Unlike rustfmt, Miri has no stable fallback.
+ifneq ($(origin MIRI),file)
+CHECK_MIRI_TOOLCHAIN = true
+else ifdef MIRI_TOOLCHAIN
+CHECK_MIRI_TOOLCHAIN = $(call check-toolchain,Miri,$(MIRI_TOOLCHAIN),miri rust-src)
+else
+CHECK_MIRI_TOOLCHAIN = { echo "rust-dev: MIRI_TOOLCHAIN is not set; this image was built without Miri" >&2; false; }
 endif
 
 # The image ships a global dprint config with the markdown, toml and yaml
@@ -50,7 +65,7 @@ YAMLLINT   ?= yamllint
 SHELL_SOURCES ?= $(shell git -C '$(PROJECT_ROOT)' ls-files --full-name -- '*.sh' '*.bash' 2>/dev/null)
 YAML_SOURCES  ?= $(shell git -C '$(PROJECT_ROOT)' ls-files --full-name -- '*.yml' '*.yaml' 2>/dev/null)
 
-.PHONY: help fmt fmt-check lint test audit check info
+.PHONY: help fmt fmt-check lint test audit miri check info
 
 ##@ Help
 
@@ -74,6 +89,7 @@ info: ## Print information about this image
 	@printf 'CARGO_TARGET_DIR: %s\n' '$(or $(CARGO_TARGET_DIR),(not set))'
 	@printf 'project root:     %s\n' '$(PROJECT_ROOT)'
 	@printf 'rustfmt:          %s\n' '$(RUSTFMT)'
+	@printf 'miri:             %s\n' '$(MIRI)'
 	@if $(CHECK_RUSTFMT_TOOLCHAIN); then \
 	  $(RUSTFMT) --version 2>&1 | sed 's/^/rustfmt version:  /'; \
 	fi
@@ -84,6 +100,11 @@ info: ## Print information about this image
 audit: ## Audit dependencies
 	@$(DENY)
 	@$(MACHETE)
+
+# Not part of check: Miri is orders of magnitude slower than native tests.
+miri: ## Run tests under Miri, to catch undefined behavior
+	@$(CHECK_MIRI_TOOLCHAIN)
+	@$(MIRI)
 
 fmt-check: ## Check formatting
 	@$(CHECK_RUSTFMT_TOOLCHAIN)

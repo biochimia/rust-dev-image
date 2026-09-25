@@ -47,8 +47,13 @@ RUN --mount=type=bind,source=vendor,target=/setup/vendor \
   install -m 0755 "$src" "$HOME/.local/bin/yq"
 
 ARG RUST_FMT_TOOLCHAIN
+# Optional: empty builds an image without Miri.
+ARG MIRI_TOOLCHAIN
 RUN rustup toolchain install stable --profile minimal --component clippy llvm-tools-preview rust-analyzer; \
   rustup toolchain install "${RUST_FMT_TOOLCHAIN:?}" --profile minimal --component rustfmt; \
+  if [ -n "${MIRI_TOOLCHAIN}" ]; then \
+    rustup toolchain install "${MIRI_TOOLCHAIN}" --profile minimal --component miri rust-src; \
+  fi; \
   rustup default stable; \
   for tc in "$HOME"/.rustup/toolchains/*; do \
     name="$(basename "$tc")"; \
@@ -62,6 +67,15 @@ RUN rustup toolchain install stable --profile minimal --component clippy llvm-to
 # For use with `cargo +$RUST_FMT_TOOLCHAIN fmt`; `cargo fmt` uses the default
 # toolchain, stable.
 ENV RUST_FMT_TOOLCHAIN=${RUST_FMT_TOOLCHAIN}
+
+# For use with `cargo +$MIRI_TOOLCHAIN miri`. The sysroot Miri needs is built
+# from source into ~/.cache/miri, here rather than on first use, which would
+# need the network and repeat in every container.
+ENV MIRI_TOOLCHAIN=${MIRI_TOOLCHAIN}
+RUN if [ -n "${MIRI_TOOLCHAIN}" ]; then \
+    cargo "+${MIRI_TOOLCHAIN}" miri setup \
+      && rm -rf "$HOME/.cargo/registry" "$HOME/.cargo/git"; \
+  fi
 
 RUN --mount=type=bind,source=vendor,target=/setup/vendor \
   mkdir -p "$HOME/.cargo/bin"; \
