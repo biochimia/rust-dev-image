@@ -61,6 +61,13 @@ Toolchains a project installs, say through `rust-toolchain.toml`, persist on
 the volume. The image's entrypoint links its own toolchains into it on every
 start.
 
+The image's own toolchains are stored outside the volume, so a stale volume
+cannot pin an older image's. The cost is that they are fixed: `rustup component
+add` for them fails with a cross-device rename error. Add a missing component
+to the `Containerfile`, or install a separate toolchain (say, a dated
+`stable` release like `1.95.0`), which lands on the volume and accepts
+components normally.
+
 _Credentials_ — SSH agent, tokens, signing keys — are not covered here. How and
 whether to make them available in the container will depend on your setup.
 

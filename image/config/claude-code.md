@@ -42,6 +42,11 @@ a cache volume; `rust-dev info` prints the exact path. Bare `cargo` uses
 - Miri comes from a pinned nightly, `$MIRI_TOOLCHAIN`: use
   `cargo +$MIRI_TOOLCHAIN miri test`, or `rust-dev miri`.
 
+The image's toolchains cannot take new components: `rustup component add`
+for them fails with a cross-device rename error, by design. Don't work
+around it; tell the user which component is missing. Installing another
+toolchain works, and it persists on the cache volume.
+
 ## Other tools
 
 - Cargo: `cargo nextest`, `cargo deny`, `cargo machete`, `cargo bloat`,

@@ -62,6 +62,8 @@ require "rustc"         rustc --version
 require "cargo"         cargo --version
 require "clippy"        cargo clippy --version
 require "rustfmt"       cargo "+${RUST_FMT_TOOLCHAIN:-nightly}" fmt --version
+# Plain `cargo fmt` is what agents and editors reach for first.
+require "rustfmt (stable)" cargo +stable fmt --version
 require "rust-analyzer" rust-analyzer --version
 # llvm-tools exists to provide these, so check the binaries rather than the
 # component name: `rustup component list` appends the target triple, and the
@@ -147,7 +149,8 @@ for link in "$HOME/.cargo/registry" "$HOME/.cargo/git" "$HOME/.rustup/toolchains
 done
 
 # rustup installs by renaming out of its tmp directory, which fails across
-# filesystems.
+# filesystems. This covers toolchains installed at runtime; the image's own, in
+# /opt, are on another filesystem by design and cannot take new components.
 tmp_dev=$(stat -L -c %d "$HOME/.rustup/tmp" 2>/dev/null)
 tc_dev=$(stat -L -c %d "$HOME/.rustup/toolchains" 2>/dev/null)
 if [ -n "$tmp_dev" ] && [ "$tmp_dev" = "$tc_dev" ]; then
